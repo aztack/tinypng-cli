@@ -1,0 +1,42 @@
+{
+  "scopes": [
+    {
+      "name": "src",
+      "patterns": ["src/"]
+    },
+    {
+      "name": "bin",
+      "patterns": ["bin/"]
+    },
+    {
+      "name": "tests",
+      "patterns": ["tests/"]
+    },
+    {
+      "name": "config",
+      "patterns": ["package.json", "tsconfig.json", ".gitignore", ".tinypng-cache.json", ".vscode/"]
+    },
+    {
+      "name": "docs",
+      "patterns": ["README.md"]
+    },
+    {
+      "name": "plugins",
+      "patterns": [".agents/", ".claude-plugin/", ".codex-plugin/", "skills/"]
+    },
+    {
+      "name": "lock",
+      "patterns": ["package-lock.json"]
+    }
+  ],
+  "order": [
+    "global",
+    "config",
+    "src",
+    "bin",
+    "tests",
+    "plugins",
+    "docs",
+    "lock"
+  ]
+}
