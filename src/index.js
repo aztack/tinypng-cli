@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const TINYPNG_ENDPOINT = 'https://tinypng.com/backend/opt/shrink';
 const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+const SUPPORTED_EXTENSIONS = new Set(['.avif', '.jpeg', '.jpg', '.png', '.webp']);
 
 export function parseSize(value) {
   const match = String(value).trim().toLowerCase().match(/^(\d+(?:\.\d+)?)(b|kb|k|mb|m)?$/);
@@ -56,6 +57,20 @@ function globToRegExp(pattern) {
   return new RegExp(`^${source}$`);
 }
 
+function globPatternToMatcher(pattern) {
+  if (path.isAbsolute(pattern)) {
+    const matcher = globToRegExp(pattern);
+    return absolutePath => matcher.test(normalizeSlashes(path.resolve(absolutePath)));
+  }
+
+  const matcher = globToRegExp(normalizeSlashes(pattern).replace(/^\.\//, ''));
+  return absolutePath => matcher.test(normalizeSlashes(path.relative(process.cwd(), absolutePath)));
+}
+
+function createPathMatchers(patterns) {
+  return patterns.filter(Boolean).map(pattern => globPatternToMatcher(pattern));
+}
+
 function hasGlobMagic(pattern) {
   return /[*?]/.test(pattern);
 }
@@ -69,7 +84,7 @@ async function exists(targetPath) {
   }
 }
 
-async function walkDirectory(dir) {
+async function walkDirectory(dir, shouldIgnore = () => false) {
   const files = [];
   const entries = await fsp.readdir(dir, { withFileTypes: true });
 
@@ -77,9 +92,13 @@ async function walkDirectory(dir) {
     const entryPath = path.join(dir, entry.name);
 
     if (entry.isDirectory()) {
-      files.push(...(await walkDirectory(entryPath)));
+      if (!shouldIgnore(entryPath, true)) {
+        files.push(...(await walkDirectory(entryPath, shouldIgnore)));
+      }
     } else if (entry.isFile()) {
-      files.push(entryPath);
+      if (!shouldIgnore(entryPath, false)) {
+        files.push(entryPath);
+      }
     }
   }
 
@@ -99,7 +118,7 @@ function getSearchRoot(pattern) {
   return root || '.';
 }
 
-async function expandPattern(pattern) {
+async function expandPattern(pattern, options = {}) {
   const absolutePattern = path.resolve(pattern);
 
   if (!hasGlobMagic(pattern)) {
@@ -110,7 +129,7 @@ async function expandPattern(pattern) {
 
     const stat = await fsp.stat(absolutePattern);
     if (stat.isDirectory()) {
-      return walkDirectory(absolutePattern);
+      return walkDirectory(absolutePattern, options.shouldIgnore);
     }
 
     return stat.isFile() ? [absolutePattern] : [];
@@ -122,8 +141,83 @@ async function expandPattern(pattern) {
   }
 
   const matcher = globToRegExp(absolutePattern);
-  const candidates = await walkDirectory(root);
+  const candidates = await walkDirectory(root, options.shouldIgnore);
   return candidates.filter(candidate => matcher.test(normalizeSlashes(path.resolve(candidate))));
+}
+
+function parseGitIgnoreLine(line) {
+  const trimmed = line.trim();
+
+  if (!trimmed || trimmed.startsWith('#')) {
+    return null;
+  }
+
+  const negated = trimmed.startsWith('!');
+  let pattern = negated ? trimmed.slice(1) : trimmed;
+
+  if (!pattern) {
+    return null;
+  }
+
+  pattern = normalizeSlashes(pattern);
+  const directoryOnly = pattern.endsWith('/');
+  pattern = pattern.replace(/\/+$/, '');
+
+  if (!pattern) {
+    return null;
+  }
+
+  const anchored = pattern.startsWith('/');
+  pattern = anchored ? pattern.slice(1) : pattern;
+  const source = globToRegExp(pattern).source.slice(1, -1);
+  const matcher = anchored
+    ? new RegExp(`^${source}(?:/.*)?$`)
+    : new RegExp(`(?:^|.*/)${source}(?:/.*)?$`);
+
+  return { matcher, negated, directoryOnly };
+}
+
+async function loadGitIgnore(rootDir) {
+  const gitIgnorePath = path.join(rootDir, '.gitignore');
+
+  try {
+    const raw = await fsp.readFile(gitIgnorePath, 'utf8');
+    return raw.split(/\r?\n/).map(parseGitIgnoreLine).filter(Boolean);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return [];
+    }
+
+    throw error;
+  }
+}
+
+function createGitIgnoreMatcher(rootDir, rules) {
+  return (absolutePath, isDirectory = false) => {
+    const relativePath = normalizeSlashes(path.relative(rootDir, absolutePath));
+
+    if (!relativePath || relativePath.startsWith('..')) {
+      return false;
+    }
+
+    if (relativePath === '.git' || relativePath.startsWith('.git/')) {
+      return true;
+    }
+
+    let ignored = false;
+
+    for (const rule of rules) {
+      if (rule.directoryOnly && !isDirectory && !relativePath.includes('/')) {
+        continue;
+      }
+
+      if (rule.matcher.test(relativePath)) {
+        ignored = !rule.negated;
+      }
+    }
+
+    return ignored;
+  };
 }
 
 async function hashFile(filePath) {
@@ -270,9 +364,14 @@ async function retry(task, retries) {
   throw lastError;
 }
 
-async function collectImagePaths(configs, tinyfiedMd5) {
+async function collectImagePaths(configs, tinyfiedMd5, options = {}) {
   const imagePaths = [];
   const seen = new Set();
+  const includeMatchers = createPathMatchers(options.includePatterns ?? []);
+  const excludeMatchers = createPathMatchers(options.excludePatterns ?? []);
+  const gitIgnoreRules = options.useGitIgnore ? await loadGitIgnore(process.cwd()) : [];
+  const isGitIgnored = createGitIgnoreMatcher(process.cwd(), gitIgnoreRules);
+  const shouldIgnore = (absolutePath, isDirectory = false) => isGitIgnored(absolutePath, isDirectory);
 
   for (const config of configs) {
     const patterns = Array.isArray(config.imageRegExp) ? config.imageRegExp : [config.imageRegExp];
@@ -284,16 +383,28 @@ async function collectImagePaths(configs, tinyfiedMd5) {
     const ignoreMatchers = ignorePatterns.map(pattern => globToRegExp(path.resolve(pattern)));
 
     for (const pattern of patterns) {
-      const files = await expandPattern(pattern);
+      const files = await expandPattern(pattern, { shouldIgnore });
 
       for (const filePath of files) {
         const absolutePath = path.resolve(filePath);
-        if (seen.has(absolutePath) || path.extname(absolutePath).toLowerCase() !== '.png') {
+        if (shouldIgnore(absolutePath, false)) {
+          continue;
+        }
+
+        if (seen.has(absolutePath) || !SUPPORTED_EXTENSIONS.has(path.extname(absolutePath).toLowerCase())) {
           continue;
         }
 
         const normalized = normalizeSlashes(absolutePath);
         if (ignoreMatchers.some(matcher => matcher.test(normalized))) {
+          continue;
+        }
+
+        if (includeMatchers.length > 0 && !includeMatchers.some(matcher => matcher(absolutePath))) {
+          continue;
+        }
+
+        if (excludeMatchers.some(matcher => matcher(absolutePath))) {
           continue;
         }
 
@@ -365,6 +476,9 @@ export async function tinyPng(param) {
     retries = 3,
     timeout = 30000,
     outputDir,
+    includePatterns = [],
+    excludePatterns = [],
+    useGitIgnore = true,
     compressImage = compressOne,
   } = param;
 
@@ -378,8 +492,12 @@ export async function tinyPng(param) {
     md5Cache.add(md5);
   }
 
-  const imagePaths = await collectImagePaths(tinyfyConfigs, md5Cache);
-  console.log(`[tinyPng] matched ${imagePaths.length} png image(s)`);
+  const imagePaths = await collectImagePaths(tinyfyConfigs, md5Cache, {
+    includePatterns,
+    excludePatterns,
+    useGitIgnore,
+  });
+  console.log(`[tinyPng] matched ${imagePaths.length} image(s)`);
 
   if (dryRun) {
     for (const item of imagePaths) {
