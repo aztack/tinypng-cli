@@ -1,0 +1,12 @@
+{
+  "name": "tinypng-cli",
+  "description": "Batch-compress TinyPNG-supported images from Claude Code workflows.",
+  "version": "0.1.0",
+  "author": {
+    "name": "aztack",
+    "email": "aztack@163.com"
+  },
+  "homepage": "https://github.com/aztack/tinypng-cli",
+  "repository": "https://github.com/aztack/tinypng-cli",
+  "license": "MIT"
+}

@@ -1,0 +1,19 @@
+{
+  "name": "tinypng-cli",
+  "owner": {
+    "name": "aztack",
+    "email": "aztack@163.com"
+  },
+  "plugins": [
+    {
+      "name": "tinypng-cli",
+      "source": ".",
+      "description": "Batch-compress AVIF, WebP, PNG, and JPEG images with TinyPNG.",
+      "version": "0.1.0",
+      "author": {
+        "name": "aztack",
+        "email": "aztack@163.com"
+      }
+    }
+  ]
+}
