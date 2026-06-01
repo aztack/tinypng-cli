@@ -1,0 +1,38 @@
+{
+  "name": "tinypng-cli",
+  "version": "0.1.0",
+  "description": "A tiny zero-dependency CLI for compressing PNG images through TinyPNG.",
+  "type": "module",
+  "bin": {
+    "tinypng-cli": "./bin/tinypng-cli.js",
+    "tinypng": "./bin/tinypng-cli.js"
+  },
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node ./bin/tinypng-cli.js",
+    "check": "node --check ./bin/tinypng-cli.js && node --check ./src/index.js",
+    "test": "node --test tests/tinypng-cli.test.js",
+    "test:compress": "node --test tests/compress.integration.test.js"
+  },
+  "keywords": [
+    "tinypng",
+    "png",
+    "compress",
+    "cli"
+  ],
+  "author": "aztack@163.com",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1"
+  }
+}
