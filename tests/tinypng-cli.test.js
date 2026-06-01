@@ -89,12 +89,52 @@ test('compression flow writes outputs without overwriting fixture pngs', async (
   }
 });
 
+test('include and exclude filters narrow batch mode matches', async () => {
+  const calls = [];
+
+  const result = await tinyPng({
+    tinyfyConfigs: [{ imageRegExp: ['tests/fixtures'] }],
+    useCache: false,
+    includePatterns: ['tests/fixtures/opm_ep01_v2_frame_*.png'],
+    excludePatterns: ['**/opm_ep01_v2_frame_2.png', '**/opm_ep01_v2_frame_3.png'],
+    minCompressRate: 10,
+    compressImage: async imagePath => {
+      calls.push(imagePath);
+      return { tinyfied: false, savedPercent: 5, url: 'https://example.test/compressed.png' };
+    },
+  });
+
+  assert.deepEqual(calls, [path.join(fixtureDir, 'opm_ep01_v2_frame_1.png')]);
+  assert.deepEqual(result.tinyfied, []);
+  assert.deepEqual(result.untiny, [path.join(fixtureDir, 'opm_ep01_v2_frame_1.png')]);
+  assert.deepEqual(result.failed, []);
+});
+
+test('batch mode respects project .gitignore by default', async () => {
+  await resetOutputDir();
+  await fsp.writeFile(path.join(outputDir, 'ignored-by-gitignore.png'), 'not a real png but has a supported extension');
+
+  const calls = [];
+
+  await tinyPng({
+    tinyfyConfigs: [{ imageRegExp: ['tests'] }],
+    useCache: false,
+    compressImage: async imagePath => {
+      calls.push(imagePath);
+      return { tinyfied: false, savedPercent: 0, url: 'https://example.test/compressed.png' };
+    },
+  });
+
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every(filePath => filePath.startsWith(fixtureDir)));
+});
+
 test('cli defaults to non-dry-run and can skip all fixtures without uploading', async () => {
   const { stdout } = await execFileAsync(process.execPath, [cliPath, 'tests/fixtures', '--min-size', '10mb', '--no-cache'], {
     cwd: rootDir,
   });
 
-  assert.match(stdout, /\[tinyPng\] matched 0 png image\(s\)/);
+  assert.match(stdout, /\[tinyPng\] matched 0 image\(s\)/);
   assert.doesNotMatch(stdout, /dry-run/);
   assert.match(stdout, /\[tinyPng\] done: compressed 0, skipped 0, failed 0/);
 });

@@ -65,7 +65,7 @@ test('compresses fixture pngs through TinyPNG without overwriting originals', as
     },
   );
 
-  assert.match(stdout, /\[tinyPng\] matched 3 png image\(s\)/);
+  assert.match(stdout, /\[tinyPng\] matched 3 image\(s\)/);
   assert.match(stdout, /\[tinyPng\] done: compressed 3, skipped 0, failed 0/);
 
   for (const fixture of fixtures) {
