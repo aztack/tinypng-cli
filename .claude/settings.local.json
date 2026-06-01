@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(npm run *)",
+      "Bash(npm test)"
+    ],
+    "deny": [
+      "Bash(git push * --force)",
+      "Bash(git reset --hard)"
+    ]
+  }
+}
