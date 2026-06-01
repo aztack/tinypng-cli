@@ -11,17 +11,20 @@ Usage:
 
 Examples:
   tinypng-cli ./assets
-  tinypng-cli "src/**/*.png" --ignore "**/node_modules/**"
+  tinypng-cli ./assets --include "icons/**/*.png" --exclude "**/*.tmp.png"
   tinypng-cli ./images --min-size 10kb --min-rate 15 --concurrency 6
 
 Options:
-  -i, --ignore <pattern>       Glob pattern to ignore. Can be used more than once.
+      --include <pattern>      Only compress images matching this glob. Can be used more than once.
+      --exclude <pattern>      Exclude images matching this glob. Can be used more than once.
+  -i, --ignore <pattern>       Alias for --exclude.
   -s, --min-size <size>        Skip images at or below this size. Supports b/kb/mb.
   -r, --min-rate <percent>     Only replace files when savings are above this percent.
   -c, --concurrency <number>   Parallel upload count. Default: 6.
   -o, --out-dir <dir>          Write compressed files into this directory instead of overwriting.
       --cache-file <path>      Cache file path. Default: .tinypng-cache.json.
       --no-cache              Do not read or write the md5 cache.
+      --no-gitignore          Do not apply .gitignore filters.
       --dry-run               List matched images without uploading.
       --retries <number>      Retry count per image. Default: 3.
       --timeout <ms>          Request timeout in milliseconds. Default: 30000.
@@ -52,13 +55,15 @@ function parseInteger(value, option) {
 function parseArgs(argv) {
   const options = {
     patterns: [],
-    ignore: [],
+    include: [],
+    exclude: [],
     minSize: 0,
     minRate: 0,
     concurrency: 6,
     cacheFile: '.tinypng-cache.json',
     useCache: true,
     dryRun: false,
+    useGitIgnore: true,
     retries: 3,
     timeout: 30000,
     outputDir: undefined,
@@ -71,9 +76,13 @@ function parseArgs(argv) {
       options.help = true;
     } else if (arg === '-v' || arg === '--version') {
       options.version = true;
-    } else if (arg === '-i' || arg === '--ignore') {
+    } else if (arg === '--include') {
       const value = readValue(argv, index, arg);
-      options.ignore.push(value);
+      options.include.push(value);
+      index += 1;
+    } else if (arg === '--exclude' || arg === '-i' || arg === '--ignore') {
+      const value = readValue(argv, index, arg);
+      options.exclude.push(value);
       index += 1;
     } else if (arg === '-s' || arg === '--min-size') {
       const value = readValue(argv, index, arg);
@@ -101,6 +110,8 @@ function parseArgs(argv) {
       index += 1;
     } else if (arg === '--no-cache') {
       options.useCache = false;
+    } else if (arg === '--no-gitignore') {
+      options.useGitIgnore = false;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
     } else if (arg === '--retries') {
@@ -142,7 +153,7 @@ async function main() {
     tinyfyConfigs: [
       {
         imageRegExp: options.patterns,
-        imageIgnoreRegExp: options.ignore,
+        imageIgnoreRegExp: options.exclude,
         minCompressSize: options.minSize,
       },
     ],
@@ -150,10 +161,13 @@ async function main() {
     concurrents: options.concurrency,
     cacheFile: options.cacheFile,
     useCache: options.useCache,
+    useGitIgnore: options.useGitIgnore,
     dryRun: options.dryRun,
     retries: options.retries,
     timeout: options.timeout,
     outputDir: options.outputDir,
+    includePatterns: options.include,
+    excludePatterns: options.exclude,
     onProgress(current, total, item) {
       const output = item?.outputPath && item.outputPath !== item.path ? ` -> ${item.outputPath}` : '';
       const suffix = item?.savedPercent == null ? '' : ` saved ${item.savedPercent.toFixed(2)}%`;
