@@ -1,7 +1,7 @@
 {
   "name": "tinypng-cli",
   "version": "0.1.0",
-  "description": "A tiny zero-dependency CLI for compressing PNG images through TinyPNG.",
+  "description": "A tiny zero-dependency CLI for batch-compressing AVIF, WebP, PNG, and JPEG images through TinyPNG.",
   "type": "module",
   "bin": {
     "tinypng-cli": "./bin/tinypng-cli.js",
@@ -23,7 +23,11 @@
   },
   "keywords": [
     "tinypng",
+    "tinyjpg",
+    "avif",
+    "webp",
     "png",
+    "jpeg",
     "compress",
     "cli"
   ],
